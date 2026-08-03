@@ -41,7 +41,7 @@ ORIGINAL_AUDIO_GAIN_DB: float = -10.5   # ≈ 30 %
 EXTERNAL_AUDIO_GAIN_DB: float = -3.0    # ≈ 70 %
 
 # ── Audio Sync Engine ───────────────────────────────────────────────
-SYNC_CORRELATION_THRESHOLD: float = 0.25   # Minimum normalized cross-correlation peak for valid sync
+SYNC_CORRELATION_THRESHOLD: float = 0.12   # Minimum ZNCC peak score for valid sync
 
 # ── Rate-limit guard for Gemini uploads ─────────────────────────────
 GEMINI_UPLOAD_DELAY_SEC: float = 2.0    # seconds between uploads

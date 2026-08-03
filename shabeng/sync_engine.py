@@ -80,50 +80,92 @@ def _load_wav_data(wav_path: pathlib.Path) -> np.ndarray:
         return np.array([], dtype=np.float32)
 
 
+def _compute_audio_features(audio: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
+    """
+    Applies bandpass filtering (150Hz-3800Hz) and Hilbert envelope extraction
+    to isolate acoustic transients (speech, beats, claps) from ambient noise.
+    """
+    if len(audio) < sample_rate * 0.2:
+        return np.array([], dtype=np.float32)
+
+    # 1. Bandpass filter to strip low-frequency room rumble and high-frequency video noise
+    try:
+        nyq = sample_rate / 2.0
+        b, a = signal.butter(4, [150.0 / nyq, 3800.0 / nyq], btype='band')
+        filt = signal.filtfilt(b, a, audio)
+    except Exception:
+        filt = audio
+
+    # 2. Compute Hilbert envelope
+    try:
+        env = np.abs(signal.hilbert(filt))
+    except Exception:
+        env = np.abs(filt)
+
+    # 3. Smooth envelope (15ms window)
+    win = int(sample_rate * 0.015)
+    if win > 1:
+        env = np.convolve(env, np.ones(win)/win, mode='same')
+
+    # Downsample by 4 for fast computation
+    ds = env[::4].astype(np.float32)
+    return ds
+
+
+def _fast_zncc(master: np.ndarray, clip: np.ndarray) -> Tuple[np.ndarray, float]:
+    """
+    Computes exact Zero-Mean Normalized Cross-Correlation (ZNCC) in O(N log N) time.
+    ZNCC normalizes local mean and variance for every sliding window position.
+    """
+    L = len(clip)
+    N = len(master)
+    if L > N or L == 0:
+        return np.array([]), 0.0
+
+    c_zero = clip - np.mean(clip)
+    c_norm = float(np.linalg.norm(c_zero))
+    if c_norm == 0:
+        return np.array([]), 0.0
+
+    # Cross-correlation of zero-mean clip with master
+    raw_corr = signal.fftconvolve(master, c_zero[::-1], mode='valid')
+
+    # Sliding window sum and sum-of-squares of master
+    ones = np.ones(L, dtype=np.float64)
+    m_sum = signal.fftconvolve(master.astype(np.float64), ones, mode='valid')
+    m_sq_sum = signal.fftconvolve((master.astype(np.float64))**2, ones, mode='valid')
+
+    m_var = m_sq_sum - (m_sum**2 / L)
+    m_var = np.maximum(m_var, 1e-9)
+    m_std = np.sqrt(m_var)
+
+    zncc = raw_corr / (m_std * c_norm + 1e-7)
+    return zncc
+
+
 def _find_audio_offset(clip_audio: np.ndarray, master_audio: np.ndarray, sample_rate: int = SAMPLE_RATE) -> Tuple[float, float]:
     """
-    Find best alignment offset of clip_audio within master_audio using normalized cross-correlation.
+    Find best alignment offset of clip_audio within master_audio using ZNCC.
     Returns (best_offset_sec, peak_correlation_score).
     """
-    if len(clip_audio) < sample_rate * 0.5 or len(master_audio) < len(clip_audio):
+    if len(clip_audio) < sample_rate * 0.4 or len(master_audio) < len(clip_audio):
         return 0.0, 0.0
 
-    # Compute energy envelope using Hilbert transform / magnitude moving average to speed up & improve robustness
-    win_len = int(sample_rate * 0.02)  # 20ms window
-    if win_len > 1:
-        clip_env = np.convolve(np.abs(clip_audio), np.ones(win_len)/win_len, mode='same')
-        master_env = np.convolve(np.abs(master_audio), np.ones(win_len)/win_len, mode='same')
-    else:
-        clip_env = np.abs(clip_audio)
-        master_env = np.abs(master_audio)
+    c_feat = _compute_audio_features(clip_audio, sample_rate)
+    m_feat = _compute_audio_features(master_audio, sample_rate)
 
-    # Downsample envelope for faster FFT correlation
-    ds_factor = 4
-    clip_env_ds = clip_env[::ds_factor]
-    master_env_ds = master_env[::ds_factor]
-    ds_sr = sample_rate / ds_factor
-
-    # Remove DC mean
-    clip_env_ds -= np.mean(clip_env_ds)
-    master_env_ds -= np.mean(master_env_ds)
-
-    # FFT cross correlation
-    corr = signal.fftconvolve(master_env_ds, clip_env_ds[::-1], mode='valid')
-
-    # Normalize correlation peak
-    clip_norm = np.linalg.norm(clip_env_ds)
-    if clip_norm == 0:
+    zncc = _fast_zncc(m_feat, c_feat)
+    if len(zncc) == 0:
         return 0.0, 0.0
 
-    best_idx = int(np.argmax(corr))
-    peak_val = float(corr[best_idx])
+    best_idx = int(np.argmax(zncc))
+    peak_score = float(zncc[best_idx])
 
-    # Local norm estimation
-    window_norm = np.linalg.norm(master_env_ds[best_idx:best_idx + len(clip_env_ds)])
-    norm_score = peak_val / (clip_norm * window_norm + 1e-7)
-
+    # Downsampling factor was 4
+    ds_sr = sample_rate / 4.0
     offset_sec = float(best_idx / ds_sr)
-    return round(offset_sec, 3), round(float(norm_score), 3)
+
+    return round(offset_sec, 3), round(peak_score, 3)
 
 
 def sync_and_export_clips(
