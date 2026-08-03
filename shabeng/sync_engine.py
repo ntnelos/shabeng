@@ -27,8 +27,8 @@ from shabeng.config import SYNC_CORRELATION_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
-# Sample rate for fast cross-correlation audio extraction
-SAMPLE_RATE = 11025
+# High quality sample rate for capturing full spectral harmonics (22.05 kHz)
+SAMPLE_RATE = 22050
 
 
 @dataclass
@@ -47,7 +47,7 @@ class SyncResult:
 
 
 def _extract_pcm_audio(input_path: pathlib.Path, output_wav: pathlib.Path, sample_rate: int = SAMPLE_RATE) -> bool:
-    """Extract downsampled mono 16-bit PCM WAV using FFmpeg."""
+    """Extract mono 16-bit PCM WAV at 22050 Hz using FFmpeg."""
     cmd = [
         "ffmpeg", "-y", "-v", "quiet",
         "-i", str(input_path),
@@ -70,7 +70,6 @@ def _load_wav_data(wav_path: pathlib.Path) -> np.ndarray:
             n_frames = wf.getnframes()
             frames = wf.readframes(n_frames)
             audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
-            # Normalize
             max_val = np.max(np.abs(audio))
             if max_val > 0:
                 audio /= max_val
@@ -80,57 +79,22 @@ def _load_wav_data(wav_path: pathlib.Path) -> np.ndarray:
         return np.array([], dtype=np.float32)
 
 
-def _compute_audio_features(audio: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
+def _fast_zncc_1d(master: np.ndarray, clip: np.ndarray) -> np.ndarray:
     """
-    Applies bandpass filtering (150Hz-3800Hz) and Hilbert envelope extraction
-    to isolate acoustic transients (speech, beats, claps) from ambient noise.
-    """
-    if len(audio) < sample_rate * 0.2:
-        return np.array([], dtype=np.float32)
-
-    # 1. Bandpass filter to strip low-frequency room rumble and high-frequency video noise
-    try:
-        nyq = sample_rate / 2.0
-        b, a = signal.butter(4, [150.0 / nyq, 3800.0 / nyq], btype='band')
-        filt = signal.filtfilt(b, a, audio)
-    except Exception:
-        filt = audio
-
-    # 2. Compute Hilbert envelope
-    try:
-        env = np.abs(signal.hilbert(filt))
-    except Exception:
-        env = np.abs(filt)
-
-    # 3. Smooth envelope (15ms window)
-    win = int(sample_rate * 0.015)
-    if win > 1:
-        env = np.convolve(env, np.ones(win)/win, mode='same')
-
-    # Downsample by 4 for fast computation
-    ds = env[::4].astype(np.float32)
-    return ds
-
-
-def _fast_zncc(master: np.ndarray, clip: np.ndarray) -> Tuple[np.ndarray, float]:
-    """
-    Computes exact Zero-Mean Normalized Cross-Correlation (ZNCC) in O(N log N) time.
-    ZNCC normalizes local mean and variance for every sliding window position.
+    Computes exact Zero-Mean Normalized Cross-Correlation (ZNCC) for a single frequency band.
     """
     L = len(clip)
     N = len(master)
     if L > N or L == 0:
-        return np.array([]), 0.0
+        return np.zeros(max(0, N - L + 1), dtype=np.float64)
 
     c_zero = clip - np.mean(clip)
     c_norm = float(np.linalg.norm(c_zero))
     if c_norm == 0:
-        return np.array([]), 0.0
+        return np.zeros(N - L + 1, dtype=np.float64)
 
-    # Cross-correlation of zero-mean clip with master
     raw_corr = signal.fftconvolve(master, c_zero[::-1], mode='valid')
 
-    # Sliding window sum and sum-of-squares of master
     ones = np.ones(L, dtype=np.float64)
     m_sum = signal.fftconvolve(master.astype(np.float64), ones, mode='valid')
     m_sq_sum = signal.fftconvolve((master.astype(np.float64))**2, ones, mode='valid')
@@ -139,31 +103,82 @@ def _fast_zncc(master: np.ndarray, clip: np.ndarray) -> Tuple[np.ndarray, float]
     m_var = np.maximum(m_var, 1e-9)
     m_std = np.sqrt(m_var)
 
-    zncc = raw_corr / (m_std * c_norm + 1e-7)
-    return zncc
+    return raw_corr / (m_std * c_norm + 1e-7)
+
+
+def _compute_spectrogram_bands(audio: np.ndarray, sr: int = SAMPLE_RATE, n_mels: int = 32) -> np.ndarray:
+    """
+    Computes 2D Spectrogram across 32 log-spaced frequency bands (100Hz - 8000Hz).
+    Isolates speech/music harmonics from crowd noise and acoustic reverb.
+    """
+    if len(audio) < sr * 0.2:
+        return np.array([[]], dtype=np.float32)
+
+    try:
+        nyq = sr / 2.0
+        b, a = signal.butter(3, [100.0 / nyq, 8000.0 / nyq], btype='band')
+        filt = signal.filtfilt(b, a, audio)
+    except Exception:
+        filt = audio
+
+    n_fft = 1024
+    hop_length = 220  # ~10ms time resolution
+
+    f, t, Sxx = signal.spectrogram(filt, fs=sr, nperseg=n_fft, noverlap=n_fft - hop_length, window='hann')
+
+    S_db = np.log1p(10.0 * np.abs(Sxx))
+    n_freqs = S_db.shape[0]
+
+    band_edges = np.logspace(np.log10(2), np.log10(n_freqs - 1), n_mels + 1).astype(int)
+
+    bands = []
+    for b in range(n_mels):
+        low_idx = band_edges[b]
+        high_idx = max(low_idx + 1, band_edges[b + 1])
+        band_energy = np.mean(S_db[low_idx:high_idx, :], axis=0)
+        bands.append(band_energy)
+
+    return np.array(bands, dtype=np.float32)
 
 
 def _find_audio_offset(clip_audio: np.ndarray, master_audio: np.ndarray, sample_rate: int = SAMPLE_RATE) -> Tuple[float, float]:
     """
-    Find best alignment offset of clip_audio within master_audio using ZNCC.
+    Final Cut Pro level 2D Multi-Band Spectrogram ZNCC Sync engine.
     Returns (best_offset_sec, peak_correlation_score).
     """
     if len(clip_audio) < sample_rate * 0.4 or len(master_audio) < len(clip_audio):
         return 0.0, 0.0
 
-    c_feat = _compute_audio_features(clip_audio, sample_rate)
-    m_feat = _compute_audio_features(master_audio, sample_rate)
+    m_spec = _compute_spectrogram_bands(master_audio, sr=sample_rate, n_mels=32)
+    c_spec = _compute_spectrogram_bands(clip_audio, sr=sample_rate, n_mels=32)
 
-    zncc = _fast_zncc(m_feat, c_feat)
-    if len(zncc) == 0:
+    if m_spec.size == 0 or c_spec.size == 0 or m_spec.shape[1] < c_spec.shape[1]:
         return 0.0, 0.0
 
-    best_idx = int(np.argmax(zncc))
-    peak_score = float(zncc[best_idx])
+    n_bands, n_master = m_spec.shape
+    _, n_clip = c_spec.shape
 
-    # Downsampling factor was 4
-    ds_sr = sample_rate / 4.0
-    offset_sec = float(best_idx / ds_sr)
+    total_zncc = np.zeros(n_master - n_clip + 1, dtype=np.float64)
+
+    valid_bands = 0
+    for b in range(n_bands):
+        m_b = m_spec[b, :]
+        c_b = c_spec[b, :]
+
+        zncc = _fast_zncc_1d(m_b, c_b)
+        if len(zncc) == len(total_zncc):
+            total_zncc += zncc
+            valid_bands += 1
+
+    if valid_bands > 0:
+        total_zncc /= valid_bands
+
+    best_idx = int(np.argmax(total_zncc))
+    peak_score = float(total_zncc[best_idx])
+
+    # Hop length = 220 samples at 22050Hz (~10ms)
+    hop_dur = 220.0 / sample_rate
+    offset_sec = float(best_idx * hop_dur)
 
     return round(offset_sec, 3), round(peak_score, 3)
 
