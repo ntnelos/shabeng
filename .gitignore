@@ -1,0 +1,23 @@
+# Environment & Keys
+.env
+.env.local
+*.env
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# System
+.DS_Store
+
+# Media & Outputs
+output/*
+!output/.gitkeep
+clips/*
+!clips/.gitkeep
+audio/*
+!audio/.gitkeep
+*.fcpxml

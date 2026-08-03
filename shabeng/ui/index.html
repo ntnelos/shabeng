@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shabeng — Automated Wedding Reel & Audio Sync</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="brand">
+      <div class="brand-icon">🎬</div>
+      <div>
+        <div class="brand-title">Shabeng</div>
+        <div class="brand-subtitle">Automated Wedding Pipeline</div>
+      </div>
+    </div>
+
+    <!-- Dual Feature Tabs -->
+    <nav class="tabs-header">
+      <button class="tab-btn active" onclick="switchTab('sync-tab')">
+        <i data-lucide="disc"></i>
+        סנכרון סאונד
+      </button>
+      <button class="tab-btn" onclick="switchTab('ai-tab')">
+        <i data-lucide="sparkles"></i>
+        הבמאי
+      </button>
+    </nav>
+  </header>
+
+  <main class="container">
+
+    <!-- ── TAB 1: AUDIO SYNC & FULL EXPORT ────────────────── -->
+    <section id="sync-tab" class="tab-content active">
+      <div class="card">
+        <h2 class="card-title">
+          <i data-lucide="music"></i>
+          סנכרון סאונד וייצוא וידאו מלא (Lossless)
+          <span class="badge">100% לוקאלי & איכות מקורית</span>
+        </h2>
+        
+        <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.95rem;">
+          המערכת מסנכרנת את פסקול המצלמה מול פסקול המיקסר, משלבת את האודיו לפי אחוזים שבחרת, ומייצאת את הסרטונים <b>ללא שום פגיעה באיכות הווידאו (-c:v copy)</b>.
+          קבצים מסונכרנים יקבלו מספור כרונולוגי (01_..., 02_...), וקבצים שלא סונכרנו יועברו לתיקיית unsynchronized.
+        </p>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label>תיקיית קליפי וידאו (Clips Directory):</label>
+            <div class="input-with-btn">
+              <input type="text" id="sync-clips-dir" class="input-field" value="./clips">
+              <button type="button" class="btn-browse" title="בחר תיקייה ב-Finder" onclick="browseFolder('sync-clips-dir', 'בחר תיקיית קליפים')">📂</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>תיקיית שמע חיצוני/מיקסר (Audio Directory):</label>
+            <div class="input-with-btn">
+              <input type="text" id="sync-audio-dir" class="input-field" value="./audio">
+              <button type="button" class="btn-browse" title="בחר תיקייה ב-Finder" onclick="browseFolder('sync-audio-dir', 'בחר תיקיית שמע')">📂</button>
+            </div>
+          </div>
+
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <label>תיקיית פלט (Output Directory):</label>
+            <div class="input-with-btn">
+              <input type="text" id="sync-output-dir" class="input-field" value="./output">
+              <button type="button" class="btn-browse" title="בחר תיקייה ב-Finder" onclick="browseFolder('sync-output-dir', 'בחר תיקיית פלט')">📂</button>
+            </div>
+          </div>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid var(--border-glass); margin: 1.5rem 0;">
+
+        <!-- Audio Blend Controls -->
+        <h3 style="font-size: 1rem; color: var(--text-highlight); margin-bottom: 1rem;">
+          <i data-lucide="sliders"></i> הגדרות Blend לשמע (Audio Mix Balance)
+        </h3>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label>סאונד מקורי של המצלמה (%):</label>
+            <div class="slider-container">
+              <input type="range" id="cam-vol-slider" min="0" max="100" value="30" oninput="updateSliderVal('cam-vol-slider', 'cam-vol-val')">
+              <span id="cam-vol-val" class="slider-val">30%</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>פסקול מיקסר / תקליטן (%):</label>
+            <div class="slider-container">
+              <input type="range" id="mix-vol-slider" min="0" max="100" value="70" oninput="updateSliderVal('mix-vol-slider', 'mix-vol-val')">
+              <span id="mix-vol-val" class="slider-val">70%</span>
+            </div>
+          </div>
+        </div>
+
+        <button id="btn-run-sync" class="btn-primary" onclick="runAudioSync()">
+          <i data-lucide="play-circle"></i>
+          התחל סנכרון וייצוא וידאו בלתי מוגבל (Lossless)
+        </button>
+
+        <!-- Realtime Progress Box -->
+        <div id="sync-progress-box" class="progress-box">
+          <div class="progress-header">
+            <span id="sync-progress-status">מבצע ניתוח סאונד...</span>
+            <span id="sync-progress-pct">0%</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div id="sync-progress-fill" class="progress-bar-fill"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sync Results Card -->
+      <div id="sync-results-card" class="card" style="display: none;">
+        <h3 class="card-title"><i data-lucide="check-circle-2"></i> תוצאות סנכרון הקליפים</h3>
+        <div style="overflow-x: auto;">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>מספר</th>
+                <th>שם קובץ</th>
+                <th>סטטוס</th>
+                <th>היסט שמע (Offset)</th>
+                <th>ציון התאמה</th>
+                <th>נתיב תוצר</th>
+              </tr>
+            </thead>
+            <tbody id="sync-results-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── TAB 2: AI REEL DIRECTOR & FCPXML ───────────────── -->
+    <section id="ai-tab" class="tab-content">
+      <div class="card">
+        <h2 class="card-title">
+          <i data-lucide="clapperboard"></i>
+          ניתוח AI, בימוי ויצירת Reel FCPXML
+          <span class="badge">Gemini 1.5 Flash (~2-3 סנט לכל החתונה)</span>
+        </h2>
+
+        <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.95rem;">
+          ה-AI מנתח כל קליפ (אנרגיה, רגש, ריקודים ואיכות), מדרג ומסנן את הקטעים הטובים ביותר, ומפיק קובץ FCPXML מוכן לייבוא ב-Final Cut Pro.
+        </p>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label>תיקיית קליפים (Clips Directory):</label>
+            <div class="input-with-btn">
+              <input type="text" id="ai-clips-dir" class="input-field" value="./clips">
+              <button type="button" class="btn-browse" title="בחר תיקייה ב-Finder" onclick="browseFolder('ai-clips-dir', 'בחר תיקיית קליפים')">📂</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>תיקיית אודיו (Audio Directory):</label>
+            <div class="input-with-btn">
+              <input type="text" id="ai-audio-dir" class="input-field" value="./audio">
+              <button type="button" class="btn-browse" title="בחר תיקייה ב-Finder" onclick="browseFolder('ai-audio-dir', 'בחר תיקיית אודיו')">📂</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>מפתח Gemini API Key:</label>
+            <input type="password" id="ai-api-key" class="input-field" placeholder="הכנס מפתח API (או השאר ריק אם מוגדר ב-.env)">
+          </div>
+
+          <div class="form-group">
+            <label>מודל AI:</label>
+            <select id="ai-model-select" class="input-field">
+              <option value="gemini-1.5-flash" selected>Gemini 1.5 Flash (מהיר וזול במיוחד - מומלץ)</option>
+              <option value="gemini-1.5-pro">Gemini 1.5 Pro (ניתוח מורכב ביותר)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>מינימום קליפים לסרטון:</label>
+            <input type="number" id="ai-min-clips" class="input-field" value="10" min="1" max="50">
+          </div>
+
+          <div class="form-group">
+            <label>מקסימום קליפים לסרטון:</label>
+            <input type="number" id="ai-max-clips" class="input-field" value="15" min="1" max="50">
+          </div>
+        </div>
+
+        <button id="btn-run-ai" class="btn-primary" onclick="runAiAnalysis()">
+          <i data-lucide="sparkles"></i>
+          התחל ניתוח AI וצור FCPXML
+        </button>
+
+        <!-- AI Progress Box -->
+        <div id="ai-progress-box" class="progress-box">
+          <div class="progress-header">
+            <span id="ai-progress-status">מעלה ומנתח קליפים ב-Gemini AI...</span>
+            <span id="ai-progress-pct">0%</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div id="ai-progress-fill" class="progress-bar-fill"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Results Card -->
+      <div id="ai-results-card" class="card" style="display: none;">
+        <h3 class="card-title"><i data-lucide="award"></i> הקליפים שנבחרו ב-Reel</h3>
+        <div id="fcpxml-download-box" style="margin-bottom: 1rem; padding: 1rem; background: rgba(255, 42, 133, 0.15); border: 1px solid var(--fuchsia-main); border-radius: 12px; font-weight: 700;"></div>
+        <div style="overflow-x: auto;">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>דירוג</th>
+                <th>שם קליפ</th>
+                <th>קטגוריה</th>
+                <th>אנרגיה</th>
+                <th>רגש</th>
+                <th>מקטע מומלץ (שניות)</th>
+                <th>תיאור AI</th>
+              </tr>
+            </thead>
+            <tbody id="ai-results-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    Shabeng &copy; 2026 — Automated Wedding Video Reel Pipeline
+  </footer>
+
+  <script>
+    // Initialize icons
+    lucide.createIcons();
+
+    // Tab switching
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+      event.currentTarget.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+    }
+
+    function updateSliderVal(sliderId, valId) {
+      const val = document.getElementById(sliderId).value;
+      document.getElementById(valId).innerText = val + '%';
+    }
+
+    // Native macOS Finder Folder Picker
+    async function browseFolder(inputId, promptMsg) {
+      try {
+        const res = await fetch('/api/browse-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: promptMsg })
+        });
+        const data = await res.json();
+        if (data.path) {
+          document.getElementById(inputId).value = data.path;
+        }
+      } catch (err) {
+        console.error("Folder picker error:", err);
+      }
+    }
+
+    // WebSocket connection for live status updates
+    let ws = null;
+
+    function connectWebSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${window.location.host}/ws/progress`);
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'progress') {
+          updateProgressBar(data.target, data.msg, data.pct);
+        }
+      };
+      ws.onclose = () => setTimeout(connectWebSocket, 2000);
+    }
+
+    connectWebSocket();
+
+    function updateProgressBar(target, msg, pct) {
+      const box = document.getElementById(`${target}-progress-box`);
+      const status = document.getElementById(`${target}-progress-status`);
+      const pctTxt = document.getElementById(`${target}-progress-pct`);
+      const fill = document.getElementById(`${target}-progress-fill`);
+
+      if (box && status && pctTxt && fill) {
+        box.style.display = 'block';
+        status.innerText = msg;
+        pctTxt.innerText = pct + '%';
+        fill.style.width = pct + '%';
+      }
+    }
+
+    // Run Feature A (Audio Sync)
+    async function runAudioSync() {
+      const clipsDir = document.getElementById('sync-clips-dir').value;
+      const audioDir = document.getElementById('sync-audio-dir').value;
+      const outputDir = document.getElementById('sync-output-dir').value;
+      const camVol = parseFloat(document.getElementById('cam-vol-slider').value);
+      const mixVol = parseFloat(document.getElementById('mix-vol-slider').value);
+
+      const btn = document.getElementById('btn-run-sync');
+      btn.disabled = true;
+
+      updateProgressBar('sync', 'מתחיל סנכרון שמע...', 5);
+
+      try {
+        const res = await fetch('/api/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clips_dir: clipsDir,
+            audio_dir: audioDir,
+            output_dir: outputDir,
+            camera_vol_pct: camVol,
+            mixer_vol_pct: mixVol
+          })
+        });
+
+        const data = await res.json();
+        btn.disabled = false;
+
+        if (res.ok) {
+          renderSyncResults(data.results);
+        } else {
+          alert('שגיאה בסנכרון: ' + (data.detail || 'שגיאה בלתי צפויה'));
+        }
+      } catch (err) {
+        btn.disabled = false;
+        alert('שגיאת תקשורת עם השרת: ' + err.message);
+      }
+    }
+
+    function renderSyncResults(results) {
+      const card = document.getElementById('sync-results-card');
+      const body = document.getElementById('sync-results-body');
+      card.style.display = 'block';
+      body.innerHTML = '';
+
+      results.forEach((r) => {
+        const tr = document.createElement('tr');
+        const statusTag = r.synced
+          ? `<span class="tag-success">סונכרן (מס' ${r.chronological_index || '-'})</span>`
+          : `<span class="tag-unsynced">Unsynchronized</span>`;
+
+        tr.innerHTML = `
+          <td>${r.chronological_index || '-'}</td>
+          <td style="font-weight: 700;">${r.clip_filename}</td>
+          <td>${statusTag}</td>
+          <td>${r.synced ? r.offset_sec + ' שניות' : '-'}</td>
+          <td>${(r.correlation_score * 100).toFixed(1)}%</td>
+          <td style="font-size: 0.8rem; font-family: monospace;">${r.output_path || '-'}</td>
+        `;
+        body.appendChild(tr);
+      });
+    }
+
+    // Run Feature B (AI Analysis)
+    async function runAiAnalysis() {
+      const clipsDir = document.getElementById('ai-clips-dir').value;
+      const audioDir = document.getElementById('ai-audio-dir').value;
+      const apiKey = document.getElementById('ai-api-key').value;
+      const model = document.getElementById('ai-model-select').value;
+      const minClips = parseInt(document.getElementById('ai-min-clips').value);
+      const maxClips = parseInt(document.getElementById('ai-max-clips').value);
+
+      const btn = document.getElementById('btn-run-ai');
+      btn.disabled = true;
+
+      updateProgressBar('ai', 'מתחבר ל-Gemini AI ומעלה קליפים...', 5);
+
+      try {
+        const res = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clips_dir: clipsDir,
+            audio_dir: audioDir,
+            api_key: apiKey,
+            model: model,
+            min_clips: minClips,
+            max_clips: maxClips
+          })
+        });
+
+        const data = await res.json();
+        btn.disabled = false;
+
+        if (res.ok) {
+          renderAiResults(data);
+        } else {
+          alert('שגיאה בניתוח AI: ' + (data.detail || 'שגיאה בלתי צפויה'));
+        }
+      } catch (err) {
+        btn.disabled = false;
+        alert('שגיאת תקשורת עם השרת: ' + err.message);
+      }
+    }
+
+    function renderAiResults(data) {
+      const card = document.getElementById('ai-results-card');
+      const dlBox = document.getElementById('fcpxml-download-box');
+      const body = document.getElementById('ai-results-body');
+      card.style.display = 'block';
+      body.innerHTML = '';
+
+      dlBox.innerHTML = `🎬 קובץ ה-FCPXML נוצר בהצלחה בנתיב:<br><code style="font-size: 0.9rem; color: #fff;">${data.fcpxml_path}</code>`;
+
+      data.selected_clips.forEach((c, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>#${idx + 1}</td>
+          <td style="font-weight: 700;">${c.clip_filename}</td>
+          <td><span class="badge">${c.category}</span></td>
+          <td>⚡ ${c.energy}/10</td>
+          <td>❤️ ${c.emotion}/10</td>
+          <td>${c.best_start}s - ${c.best_end}s</td>
+          <td style="font-size: 0.85rem; color: var(--text-muted);">${c.description}</td>
+        `;
+        body.appendChild(tr);
+      });
+    }
+  </script>
+</body>
+</html>

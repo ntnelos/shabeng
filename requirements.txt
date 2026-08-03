@@ -1,0 +1,8 @@
+google-generativeai>=0.8.0
+python-dotenv>=1.0.0
+fastapi>=0.110.0
+uvicorn>=0.28.0
+websockets>=12.0
+scipy>=1.12.0
+numpy>=1.26.0
+python-multipart>=0.0.9
