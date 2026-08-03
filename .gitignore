@@ -3,12 +3,16 @@
 .env.local
 *.env
 
-# Python
+# Python & Bundles
 .venv/
 venv/
 __pycache__/
 *.pyc
 *.pyo
+build/
+dist/
+*.spec
+Shabeng.app/
 
 # System
 .DS_Store
