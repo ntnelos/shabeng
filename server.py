@@ -106,36 +106,26 @@ def _pick_folder_native(prompt_text: str) -> str:
     script = f'''
     tell application "System Events"
         activate
-        set selectedFolder to choose folder with prompt "{prompt_text}"
-        return POSIX path of selectedFolder
+        try
+            set selectedFolder to choose folder with prompt "{prompt_text}"
+            return POSIX path of selectedFolder
+        on error
+            return ""
+        end try
     end tell
     '''
     try:
-        res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=60)
+        res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=120)
         if res.returncode == 0 and res.stdout.strip():
             path = res.stdout.strip()
             return path[:-1] if path.endswith("/") else path
     except Exception as exc:
         logger.warning("AppleScript folder pick failed: %s", exc)
-
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
-        folder = filedialog.askdirectory(title=prompt_text)
-        root.destroy()
-        if folder:
-            return folder
-    except Exception as exc:
-        logger.warning("Tkinter folder pick failed: %s", exc)
-
     return ""
 
 def _pick_file_native(prompt_text: str, file_type: str = "video") -> str:
     if file_type == "video":
-        type_str = 'of type {"public.movie", "com.apple.quicktime-movie", "public.mpeg-4"}'
+        type_str = 'of type {"public.movie", "com.apple.quicktime-movie", "public.mpeg-4", "public.mp4"}'
     elif file_type == "audio":
         type_str = 'of type {"public.audio", "public.mp3", "com.apple.m4a-audio", "public.wave-audio"}'
     else:
@@ -144,33 +134,20 @@ def _pick_file_native(prompt_text: str, file_type: str = "video") -> str:
     script = f'''
     tell application "System Events"
         activate
-        set selectedFile to choose file with prompt "{prompt_text}" {type_str}
-        return POSIX path of selectedFile
+        try
+            set selectedFile to choose file with prompt "{prompt_text}" {type_str}
+            return POSIX path of selectedFile
+        on error
+            return ""
+        end try
     end tell
     '''
     try:
-        res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=60)
+        res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=120)
         if res.returncode == 0 and res.stdout.strip():
             return res.stdout.strip()
     except Exception as exc:
         logger.warning("AppleScript file pick failed: %s", exc)
-
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
-        if file_type == "video":
-            types = [("Video files", "*.mp4 *.mov *.m4v *.mxf"), ("All files", "*.*")]
-        else:
-            types = [("Audio files", "*.wav *.mp3 *.aac *.m4a *.aif *.aiff"), ("All files", "*.*")]
-        file_path = filedialog.askopenfilename(title=prompt_text, filetypes=types)
-        root.destroy()
-        if file_path:
-            return file_path
-    except Exception as exc:
-        logger.warning("Tkinter file pick failed: %s", exc)
 
     return ""
 
