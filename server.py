@@ -24,6 +24,7 @@ from shabeng.config import (
     DEFAULT_OUTPUT_DIR,
     ORIGINAL_AUDIO_GAIN_PERCENT,
     EXTERNAL_AUDIO_GAIN_PERCENT,
+    SYNC_CORRELATION_THRESHOLD,
     GEMINI_API_KEY,
     GEMINI_MODEL
 )
@@ -201,7 +202,7 @@ async def api_run_sync(req: SyncRequest):
             req.output_dir,
             req.camera_vol_pct,
             req.mixer_vol_pct,
-            0.25,
+            SYNC_CORRELATION_THRESHOLD,
             progress_cb
         )
         return {"status": "success", "results": [r.to_dict() for r in results]}
