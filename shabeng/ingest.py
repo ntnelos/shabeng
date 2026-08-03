@@ -91,18 +91,23 @@ def _probe_audio(path: pathlib.Path) -> dict:
         return {}
 
 
-def scan_clips(directory: str) -> List[ClipInfo]:
+def scan_clips(target: str) -> List[ClipInfo]:
     """
-    Walk *directory* and return a list of ClipInfo for every video file found.
+    Scan *target* (directory or single video file) and return a list of ClipInfo.
     Uses ffprobe for accurate metadata (duration, fps, resolution).
     """
-    root = pathlib.Path(directory)
-    if not root.is_dir():
-        raise FileNotFoundError(f"Clips directory not found: {directory}")
+    root = pathlib.Path(target)
+    if not root.exists():
+        raise FileNotFoundError(f"Clips path not found: {target}")
+
+    if root.is_file():
+        candidate_files = [root]
+    else:
+        candidate_files = sorted([f for f in root.rglob("*") if f.is_file()])
 
     clips: List[ClipInfo] = []
-    for file in sorted(root.rglob("*")):
-        if file.suffix.lower() in VIDEO_EXTENSIONS and file.is_file():
+    for file in candidate_files:
+        if file.suffix.lower() in VIDEO_EXTENSIONS:
             probe = _probe_video(file)
 
             duration = 0.0
@@ -139,22 +144,27 @@ def scan_clips(directory: str) -> List[ClipInfo]:
             logger.info("Found clip: %s  (%.2fs, %.1f fps, %dx%d)",
                         file.name, duration, fps, width, height)
 
-    logger.info("Ingested %d video clips from %s", len(clips), directory)
+    logger.info("Ingested %d video clip(s) from %s", len(clips), target)
     return clips
 
 
-def scan_audio(directory: str) -> List[AudioFileInfo]:
+def scan_audio(target: str) -> List[AudioFileInfo]:
     """
-    Walk *directory* and return AudioFileInfo for every audio file found.
+    Scan *target* (directory or single audio file) and return AudioFileInfo list.
     """
-    root = pathlib.Path(directory)
-    if not root.is_dir():
-        logger.warning("Audio directory not found: %s — skipping audio sync.", directory)
+    root = pathlib.Path(target)
+    if not root.exists():
+        logger.warning("Audio path not found: %s — skipping audio sync.", target)
         return []
 
+    if root.is_file():
+        candidate_files = [root]
+    else:
+        candidate_files = sorted([f for f in root.rglob("*") if f.is_file()])
+
     audio_files: List[AudioFileInfo] = []
-    for file in sorted(root.rglob("*")):
-        if file.suffix.lower() in AUDIO_EXTENSIONS and file.is_file():
+    for file in candidate_files:
+        if file.suffix.lower() in AUDIO_EXTENSIONS:
             probe = _probe_audio(file)
 
             duration = 0.0
@@ -180,5 +190,5 @@ def scan_audio(directory: str) -> List[AudioFileInfo]:
             logger.info("Found audio: %s  (%.2fs, %d Hz)",
                         file.name, duration, sample_rate)
 
-    logger.info("Ingested %d audio files from %s", len(audio_files), directory)
+    logger.info("Ingested %d audio file(s) from %s", len(audio_files), target)
     return audio_files

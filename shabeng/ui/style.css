@@ -132,6 +132,57 @@ body {
   box-shadow: 0 0 12px var(--fuchsia-glow);
 }
 
+/* Mode Selection Pills */
+.mode-selector {
+  display: flex;
+  gap: 0.75rem;
+  background: rgba(10, 5, 20, 0.6);
+  padding: 0.4rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-glass);
+  width: fit-content;
+  margin-bottom: 1.5rem;
+}
+
+.mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.5rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-btn.active {
+  background: rgba(255, 42, 133, 0.25);
+  color: var(--fuchsia-light);
+  border: 1px solid var(--fuchsia-main);
+  box-shadow: 0 0 10px var(--fuchsia-glow);
+}
+
+.btn-preview {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  color: #34d399;
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s ease;
+}
+
+.btn-preview:hover {
+  background: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+}
+
 /* Main Layout */
 .container {
   max-width: 1200px;

@@ -133,12 +133,68 @@ def _pick_folder_native(prompt_text: str) -> str:
 
     return ""
 
+def _pick_file_native(prompt_text: str, file_type: str = "video") -> str:
+    if file_type == "video":
+        type_str = 'of type {"public.movie", "com.apple.quicktime-movie", "public.mpeg-4"}'
+    elif file_type == "audio":
+        type_str = 'of type {"public.audio", "public.mp3", "com.apple.m4a-audio", "public.wave-audio"}'
+    else:
+        type_str = ""
+
+    script = f'''
+    tell application "System Events"
+        activate
+        set selectedFile to choose file with prompt "{prompt_text}" {type_str}
+        return POSIX path of selectedFile
+    end tell
+    '''
+    try:
+        res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=60)
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+    except Exception as exc:
+        logger.warning("AppleScript file pick failed: %s", exc)
+
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        if file_type == "video":
+            types = [("Video files", "*.mp4 *.mov *.m4v *.mxf"), ("All files", "*.*")]
+        else:
+            types = [("Audio files", "*.wav *.mp3 *.aac *.m4a *.aif *.aiff"), ("All files", "*.*")]
+        file_path = filedialog.askopenfilename(title=prompt_text, filetypes=types)
+        root.destroy()
+        if file_path:
+            return file_path
+    except Exception as exc:
+        logger.warning("Tkinter file pick failed: %s", exc)
+
+    return ""
+
 @app.post("/api/browse-folder")
 async def browse_folder(data: dict):
     prompt = data.get("prompt", "בחר תיקייה")
     loop = asyncio.get_running_loop()
     chosen_path = await loop.run_in_executor(None, _pick_folder_native, prompt)
     return {"path": chosen_path}
+
+@app.post("/api/browse-file")
+async def browse_file(data: dict):
+    prompt = data.get("prompt", "בחר קובץ")
+    file_type = data.get("file_type", "video")
+    loop = asyncio.get_running_loop()
+    chosen_path = await loop.run_in_executor(None, _pick_file_native, prompt, file_type)
+    return {"path": chosen_path}
+
+@app.get("/api/media-file")
+async def get_media_file(path: str):
+    p = pathlib.Path(path)
+    if not p.exists() or not p.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(path=str(p))
 
 @app.websocket("/ws/progress")
 async def websocket_progress_endpoint(websocket: WebSocket):

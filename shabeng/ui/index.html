@@ -49,7 +49,14 @@
           קבצים מסונכרנים יקבלו מספור כרונולוגי (01_..., 02_...), וקבצים שלא סונכרנו יועברו לתיקיית unsynchronized.
         </p>
 
-        <div class="form-grid">
+        <!-- Mode Selection: Folder vs Single File -->
+        <div class="mode-selector">
+          <button type="button" id="btn-mode-folder" class="mode-btn active" onclick="setSyncMode('folder')">📁 סנכרון תיקייה שלמה</button>
+          <button type="button" id="btn-mode-single" class="mode-btn" onclick="setSyncMode('single')">🎬 סנכרון קובץ יחיד</button>
+        </div>
+
+        <!-- Folder Mode Grid -->
+        <div id="grid-folder-mode" class="form-grid">
           <div class="form-group">
             <label>תיקיית קליפי וידאו (Clips Directory):</label>
             <div class="input-with-btn">
@@ -71,6 +78,34 @@
             <div class="input-with-btn">
               <input type="text" id="sync-output-dir" class="input-field" value="./output">
               <button type="button" class="btn-browse" title="בחר תיקייה ב-Finder" onclick="browseFolder('sync-output-dir', 'בחר תיקיית פלט')">📂</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Single File Mode Grid -->
+        <div id="grid-single-mode" class="form-grid" style="display: none;">
+          <div class="form-group">
+            <label>קובץ וידאו יחיד לסנכרון (Video File):</label>
+            <div class="input-with-btn">
+              <input type="text" id="sync-clip-file" class="input-field" placeholder="בחר קובץ וידאו (.mp4, .mov)">
+              <button type="button" class="btn-browse" title="בחר קובץ ב-Finder" onclick="browseFile('sync-clip-file', 'בחר קובץ וידאו', 'video')">📄</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>קובץ אודיו / תיקיית אודיו (Audio File/Folder):</label>
+            <div class="input-with-btn">
+              <input type="text" id="sync-audio-single" class="input-field" placeholder="בחר קובץ אודיו (.wav, .mp3) או תיקייה">
+              <button type="button" class="btn-browse" title="בחר קובץ ב-Finder" onclick="browseFile('sync-audio-single', 'בחר קובץ אודיו', 'audio')">📄</button>
+              <button type="button" class="btn-browse" title="בחר תיקייה ב-Finder" onclick="browseFolder('sync-audio-single', 'בחר תיקיית אודיו')">📂</button>
+            </div>
+          </div>
+
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <label>תיקיית פלט (Output Directory):</label>
+            <div class="input-with-btn">
+              <input type="text" id="sync-output-single-dir" class="input-field" value="./output">
+              <button type="button" class="btn-browse" title="בחר תיקייה ב-Finder" onclick="browseFolder('sync-output-single-dir', 'בחר תיקיית פלט')">📂</button>
             </div>
           </div>
         </div>
@@ -120,6 +155,17 @@
       <!-- Sync Results Card -->
       <div id="sync-results-card" class="card" style="display: none;">
         <h3 class="card-title"><i data-lucide="check-circle-2"></i> תוצאות סנכרון הקליפים</h3>
+        
+        <!-- Interactive Video Preview Player Container -->
+        <div id="video-preview-container" style="display: none; margin-bottom: 1.5rem; padding: 1.25rem; background: rgba(10, 5, 20, 0.85); border: 1px solid var(--border-glass-glow); border-radius: 12px; box-shadow: 0 0 20px var(--fuchsia-glow);">
+          <h4 style="color: var(--fuchsia-light); margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
+            <span>🎬 תצוגה מקדימה לקובץ המסונכרן (Preview)</span>
+            <button type="button" onclick="closePreview()" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.2rem;">✖</button>
+          </h4>
+          <video id="preview-player" controls style="width: 100%; max-height: 420px; border-radius: 8px; background: #000; outline: none;"></video>
+          <div id="preview-filename" style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-muted); font-family: monospace;"></div>
+        </div>
+
         <div style="overflow-x: auto;">
           <table class="results-table">
             <thead>
@@ -129,6 +175,7 @@
                 <th>סטטוס</th>
                 <th>היסט שמע (Offset)</th>
                 <th>ציון התאמה</th>
+                <th>תצוגה מקדימה</th>
                 <th>נתיב תוצר</th>
               </tr>
             </thead>
@@ -242,6 +289,17 @@
     // Initialize icons
     lucide.createIcons();
 
+    let currentSyncMode = 'folder';
+
+    function setSyncMode(mode) {
+      currentSyncMode = mode;
+      document.getElementById('btn-mode-folder').classList.toggle('active', mode === 'folder');
+      document.getElementById('btn-mode-single').classList.toggle('active', mode === 'single');
+
+      document.getElementById('grid-folder-mode').style.display = (mode === 'folder') ? 'grid' : 'none';
+      document.getElementById('grid-single-mode').style.display = (mode === 'single') ? 'grid' : 'none';
+    }
+
     // Tab switching
     function switchTab(tabId) {
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -270,6 +328,23 @@
         }
       } catch (err) {
         console.error("Folder picker error:", err);
+      }
+    }
+
+    // Native macOS Finder File Picker
+    async function browseFile(inputId, promptMsg, fileType = 'video') {
+      try {
+        const res = await fetch('/api/browse-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: promptMsg, file_type: fileType })
+        });
+        const data = await res.json();
+        if (data.path) {
+          document.getElementById(inputId).value = data.path;
+        }
+      } catch (err) {
+        console.error("File picker error:", err);
       }
     }
 
@@ -306,9 +381,26 @@
 
     // Run Feature A (Audio Sync)
     async function runAudioSync() {
-      const clipsDir = document.getElementById('sync-clips-dir').value;
-      const audioDir = document.getElementById('sync-audio-dir').value;
-      const outputDir = document.getElementById('sync-output-dir').value;
+      let clipsDir, audioDir, outputDir;
+
+      if (currentSyncMode === 'single') {
+        clipsDir = document.getElementById('sync-clip-file').value.trim();
+        audioDir = document.getElementById('sync-audio-single').value.trim();
+        outputDir = document.getElementById('sync-output-single-dir').value.trim();
+        if (!clipsDir) {
+          alert('נא לבחור קובץ וידאו לסנכרון');
+          return;
+        }
+        if (!audioDir) {
+          alert('נא לבחור קובץ או תיקיית אודיו לסנכרון');
+          return;
+        }
+      } else {
+        clipsDir = document.getElementById('sync-clips-dir').value.trim();
+        audioDir = document.getElementById('sync-audio-dir').value.trim();
+        outputDir = document.getElementById('sync-output-dir').value.trim();
+      }
+
       const camVol = parseFloat(document.getElementById('cam-vol-slider').value);
       const mixVol = parseFloat(document.getElementById('mix-vol-slider').value);
 
@@ -356,16 +448,44 @@
           ? `<span class="tag-success">סונכרן (מס' ${r.chronological_index || '-'})</span>`
           : `<span class="tag-unsynced">Unsynchronized</span>`;
 
+        const previewBtn = r.output_path
+          ? `<button type="button" class="btn-preview" onclick="playPreview('${encodeURIComponent(r.output_path)}', '${encodeURIComponent(r.clip_filename)}')">▶️ נגן (Preview)</button>`
+          : '-';
+
         tr.innerHTML = `
           <td>${r.chronological_index || '-'}</td>
           <td style="font-weight: 700;">${r.clip_filename}</td>
           <td>${statusTag}</td>
           <td>${r.synced ? r.offset_sec + ' שניות' : '-'}</td>
           <td>${(r.correlation_score * 100).toFixed(1)}%</td>
+          <td>${previewBtn}</td>
           <td style="font-size: 0.8rem; font-family: monospace;">${r.output_path || '-'}</td>
         `;
         body.appendChild(tr);
       });
+    }
+
+    function playPreview(encodedPath, encodedFilename) {
+      const path = decodeURIComponent(encodedPath);
+      const filename = decodeURIComponent(encodedFilename);
+
+      const container = document.getElementById('video-preview-container');
+      const player = document.getElementById('preview-player');
+      const label = document.getElementById('preview-filename');
+
+      container.style.display = 'block';
+      label.innerText = `קובץ: ${filename} | נתיב: ${path}`;
+      player.src = `/api/media-file?path=${encodeURIComponent(path)}`;
+      player.play();
+      container.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function closePreview() {
+      const container = document.getElementById('video-preview-container');
+      const player = document.getElementById('preview-player');
+      player.pause();
+      player.src = '';
+      container.style.display = 'none';
     }
 
     // Run Feature B (AI Analysis)
