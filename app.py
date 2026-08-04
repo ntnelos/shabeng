@@ -3,10 +3,14 @@ app.py — Native macOS Desktop Application wrapper for Shabeng
 ============================================================
 """
 import sys
+import os
 import time
 import threading
 import uvicorn
 import webview
+
+# Ensure Homebrew and common binary paths are available when running as a .app bundle
+os.environ["PATH"] = f"/opt/homebrew/bin:/usr/local/bin:{os.environ.get('PATH', '')}"
 
 from server import app
 

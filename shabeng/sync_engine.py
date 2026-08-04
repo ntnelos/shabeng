@@ -195,6 +195,22 @@ def sync_and_export_clips(
     """
     Synchronizes clips with mixer audio and exports them losslessly with blended audio.
     """
+    # Debug log to file for diagnosing app-level issues
+    import datetime
+    _debug_log = pathlib.Path.home() / "Desktop" / "shabeng_debug.log"
+    def _dbg(msg):
+        with open(_debug_log, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.datetime.now().isoformat()}] {msg}\n")
+        logger.info(msg)
+
+    _dbg(f"=== sync_and_export_clips START ===")
+    _dbg(f"  clips_dir={clips_dir}")
+    _dbg(f"  audio_dir={audio_dir}")
+    _dbg(f"  output_dir={output_dir}")
+    _dbg(f"  camera_vol_pct={camera_vol_pct}, mixer_vol_pct={mixer_vol_pct}")
+    _dbg(f"  correlation_threshold={correlation_threshold}")
+    _dbg(f"  SYNC_CORRELATION_THRESHOLD (config)={SYNC_CORRELATION_THRESHOLD}")
+
     output_path = pathlib.Path(output_dir)
     unsynced_path = output_path / "unsynchronized"
     output_path.mkdir(parents=True, exist_ok=True)
@@ -203,9 +219,12 @@ def sync_and_export_clips(
     clips = scan_clips(clips_dir)
     audio_files = scan_audio(audio_dir)
 
+    _dbg(f"  Found {len(clips)} clips, {len(audio_files)} audio files")
+
     results: List[SyncResult] = []
 
     if not clips:
+        _dbg(f"  ERROR: No clips found in {clips_dir}")
         logger.warning("No clips found in %s", clips_dir)
         return results
 
@@ -226,8 +245,10 @@ def sync_and_export_clips(
             
             # Sort audio files by filename
             sorted_audio = sorted(audio_files, key=lambda a: a.filename)
+            _dbg(f"  Audio files: {[a.filename for a in sorted_audio]}")
             if len(sorted_audio) == 1:
                 has_audio = _extract_pcm_audio(sorted_audio[0].path, master_wav)
+                _dbg(f"  Single audio extraction: has_audio={has_audio}")
             else:
                 # Concat audio files using ffmpeg concat demuxer
                 concat_list = tmp_dir / "concat_list.txt"
@@ -241,8 +262,10 @@ def sync_and_export_clips(
                 ]
                 subprocess.run(cmd, capture_output=True, timeout=300)
                 has_audio = master_wav.exists() and master_wav.stat().st_size > 0
+                _dbg(f"  Concat audio extraction: has_audio={has_audio}")
 
         master_pcm = _load_wav_data(master_wav) if has_audio else np.array([])
+        _dbg(f"  Master PCM length: {len(master_pcm)} samples ({len(master_pcm)/SAMPLE_RATE:.1f}s)" if len(master_pcm) > 0 else "  Master PCM: EMPTY")
 
         total_clips = len(clips)
         temp_synced_matches: List[Tuple[ClipInfo, float, float]] = []
@@ -256,14 +279,18 @@ def sync_and_export_clips(
 
             clip_wav = tmp_dir / f"clip_{idx}.wav"
             extracted = _extract_pcm_audio(clip.path, clip_wav)
+            _dbg(f"  Clip {clip.filename}: extracted={extracted}")
             
             if extracted and len(master_pcm) > 0:
                 clip_pcm = _load_wav_data(clip_wav)
+                _dbg(f"    clip_pcm length: {len(clip_pcm)} samples ({len(clip_pcm)/SAMPLE_RATE:.1f}s)")
                 offset_sec, score = _find_audio_offset(clip_pcm, master_pcm)
 
+                _dbg(f"    RESULT: score={score:.4f}, offset={offset_sec:.3f}s, threshold={correlation_threshold}")
                 logger.info("Clip %s: score=%.3f, offset=%.2fs", clip.filename, score, offset_sec)
 
                 if score >= correlation_threshold:
+                    _dbg(f"    SYNCED! score {score:.4f} >= threshold {correlation_threshold}")
                     temp_synced_matches.append((clip, offset_sec, score))
                 else:
                     # Sync failed -> Copy to unsynchronized
