@@ -252,7 +252,7 @@ async def api_run_ai(req: AiRequest):
         progress_cb("Computing audio alignment timeline...", 90, 100)
         sync_plan = compute_audio_sync(selected, audio_files)
 
-        output_path = pathlib.Path(req.output_dir)
+        output_path = pathlib.Path(req.output_dir).expanduser()
         output_path.mkdir(parents=True, exist_ok=True)
         fcpxml_file = output_path / "wedding_reel.fcpxml"
 

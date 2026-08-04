@@ -211,7 +211,7 @@ def sync_and_export_clips(
     _dbg(f"  correlation_threshold={correlation_threshold}")
     _dbg(f"  SYNC_CORRELATION_THRESHOLD (config)={SYNC_CORRELATION_THRESHOLD}")
 
-    output_path = pathlib.Path(output_dir)
+    output_path = pathlib.Path(output_dir).expanduser()
     unsynced_path = output_path / "unsynchronized"
     output_path.mkdir(parents=True, exist_ok=True)
     unsynced_path.mkdir(parents=True, exist_ok=True)

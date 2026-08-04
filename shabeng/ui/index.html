@@ -76,7 +76,7 @@
           <div class="form-group" style="grid-column: 1 / -1;">
             <label>תיקיית פלט (Output Directory):</label>
             <div class="input-with-btn">
-              <input type="text" id="sync-output-dir" class="input-field" value="./output">
+              <input type="text" id="sync-output-dir" class="input-field" value="~/Downloads">
               <button type="button" class="btn-browse" title="בחר תיקייה ב-Finder" onclick="browseFolder('sync-output-dir', 'בחר תיקיית פלט')">📂</button>
             </div>
           </div>
@@ -104,7 +104,7 @@
           <div class="form-group" style="grid-column: 1 / -1;">
             <label>תיקיית פלט (Output Directory):</label>
             <div class="input-with-btn">
-              <input type="text" id="sync-output-single-dir" class="input-field" value="./output">
+              <input type="text" id="sync-output-single-dir" class="input-field" value="~/Downloads">
               <button type="button" class="btn-browse" title="בחר תיקייה ב-Finder" onclick="browseFolder('sync-output-single-dir', 'בחר תיקיית פלט')">📂</button>
             </div>
           </div>
@@ -285,11 +285,10 @@
     Shabeng &copy; 2026 — Automated Wedding Video Reel Pipeline
   </footer>
 
-  <script>
     // Initialize icons
     lucide.createIcons();
 
-    let currentSyncMode = 'folder';
+    let currentSyncMode = 'single';
 
     function setSyncMode(mode) {
       currentSyncMode = mode;
@@ -299,6 +298,9 @@
       document.getElementById('grid-folder-mode').style.display = (mode === 'folder') ? 'grid' : 'none';
       document.getElementById('grid-single-mode').style.display = (mode === 'single') ? 'grid' : 'none';
     }
+    
+    // Set initial display
+    setSyncMode(currentSyncMode);
 
     // Tab switching
     function switchTab(tabId) {
